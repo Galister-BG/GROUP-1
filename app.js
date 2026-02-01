@@ -4,7 +4,7 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-
+let nextId = 4; // Initialize nextId to 4 since we have 3 initial todos
 let todos = [
     { id: 1, task: 'Buy groceries', completed: false},
     { id: 2, task: 'Walk the dog', completed: false },
@@ -18,30 +18,30 @@ app.get('/todos', (req, res) => {
 
 // POST new - create a new todo
 app.post('/todos', (req, res) => {
-    const newTodo = { id: todos.length + 1, ...req.body }; //auto-generate id
-    todos.push(newTodo);
-    
-    if (!newTodo.task) {
+    // Validate FIRST before creating
+    if (!req.body.task) {
         return res.status(400).json({ error: 'Task field is required' });  
-    }else if (newTodo.completed === undefined) {
-        newTodo.completed = false;
-    }// auto-set completed to false if not provided
-
-
-    // validating text field
-    if (typeof newTodo.task !== 'string' || typeof newTodo.completed !== 'boolean'){
-        todos.pop(); // remove the invalid todo
-        return res.status(400).json({ error: 'Invalid data types for task or completed fields' });
-    }   
-
-    // check for duplicate tasks
-    if (todos.some(t => t.task === newTodo.task)){
-        todos.pop(); // remove the duplicate todo
-        return res.status(400).json({error: 'Task already exist'})
     }
-
-    res.status(201).json(newTodo); //send created todo as json response
+    
+    if (typeof req.body.task !== 'string') {
+        return res.status(400).json({ error: 'Task must be a string' });
+    }
+    
+    // Check for duplicates BEFORE adding
+    if (todos.some(t => t.task === req.body.task)) {
+        return res.status(400).json({error: 'Task already exists'});
+    }
+    
+    const newTodo = { 
+        id: nextId++, 
+        task: req.body.task,
+        completed: req.body.completed || false 
+    };
+    
+    todos.push(newTodo);
+    res.status(201).json(newTodo);
 });
+
 
 // PATCH Update- partial update of a todo
 app.patch('/todos/:id', (req, res) => {
@@ -52,6 +52,12 @@ app.patch('/todos/:id', (req, res) => {
     Object.assign(todo, req.body); //update todo with request body e.g. {completed: true}
     res.status(200).json(todo); //send updated todo as json response
 });
+
+//Move the completed todos route before the :id route to avoid confusion
+app.get('/todos/completed', (req, res) => {
+    const completed = todos.filter(t => t.completed === true);
+    res.status(200).json(completed); //custom read
+}); //get all completed todos
 
 // DELETE a todo
 app.delete('/todos/:id', (req, res) => {
@@ -64,10 +70,6 @@ app.delete('/todos/:id', (req, res) => {
     res.status(204).send(); //send no content status
 });
 
-app.get('/todos/completed', (req, res) => {
-    const completed = todos.filter(t => t.completed === true);
-    res.status(200).json(completed); //custom read
-}); //get all completed todos
 
 app.get('/todos/:id', (req, res) => {
     const todo = todos.find(t => t.id === parseInt(req.params.id)); //find todo by id
@@ -77,8 +79,15 @@ app.get('/todos/:id', (req, res) => {
     res.status(200).json(todo);
 }); // Get a specific todo by id
 
+// 404 handler for unmatched routes
 app.use((req, res) => {
     res.status(404).json({ error: 'Not Found' });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ error: 'Internal Server Error' });
 });
 
 const PORT = process.env.PORT || 4000;
